@@ -2,12 +2,16 @@ package livinglock
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
 	"syscall"
 	"time"
 )
+
+// ErrLockBusy is returned when a lock is held by another active process
+var ErrLockBusy = errors.New("lock is held by another process")
 
 // LockInfo represents the content of a lock file
 type LockInfo struct {
@@ -209,7 +213,7 @@ func Acquire(filePath string, options Options) (*Lock, error) {
 			// Process doesn't exist or was killed, proceed to acquire lock
 		} else {
 			// Lock is still active
-			return nil, fmt.Errorf("lock is held by active process %d", existingLock.ProcessID)
+			return nil, ErrLockBusy
 		}
 	} else if !os.IsNotExist(err) {
 		// Some other error reading the file

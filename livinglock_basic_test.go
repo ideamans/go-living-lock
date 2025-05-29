@@ -2,6 +2,7 @@ package livinglock
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -90,6 +91,9 @@ func TestAcquire_DifferentPID_Active(t *testing.T) {
 	_, err = Acquire(lockPath, Options{Dependencies: deps2})
 	if err == nil {
 		t.Error("Second process should not be able to acquire active lock")
+	}
+	if !errors.Is(err, ErrLockBusy) {
+		t.Errorf("Expected ErrLockBusy, got: %v", err)
 	}
 }
 
