@@ -69,6 +69,7 @@ func main() {
 ```
 
 **Scenario Handled**:
+
 1. **Normal case**: Cron triggers at 2 AM, previous job finished → new job runs
 2. **Long-running case**: Previous job still working → new job yields gracefully  
 3. **Deadlock case**: Previous job stuck for >2 hours without heartbeat → new job takes over
@@ -105,6 +106,7 @@ for _, dataset := range datasets {
 #### Secondary Use Cases
 
 **Development Environment**:
+
 ```go
 // Prevent multiple development servers on same port
 lock, err := livinglock.Acquire("/tmp/dev-server-8080.lock", livinglock.Options{
@@ -114,6 +116,7 @@ lock, err := livinglock.Acquire("/tmp/dev-server-8080.lock", livinglock.Options{
 ```
 
 **Database Migration Scripts**:
+
 ```go
 // Ensure only one migration runs at a time
 lock, err := livinglock.Acquire("/tmp/db-migration.lock", livinglock.Options{
@@ -251,13 +254,6 @@ livinglock/
 │   ├── mock_filesystem.go            # Mock FileSystem implementation
 │   ├── mock_clock.go                 # Mock SystemClock implementation
 │   └── mock_process.go               # Mock ProcessManager implementation
-├── examples/                         # Usage examples
-│   ├── basic/                        # Simple usage example
-│   │   └── main.go
-│   ├── daemon/                       # Daemon service example
-│   │   └── main.go
-│   └── scheduled_job/                # Cron job example
-│       └── main.go
 ├── go.mod                           # Go module definition
 ├── go.sum                           # Go module checksums
 ├── README.md                        # User documentation
