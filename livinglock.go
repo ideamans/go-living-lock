@@ -239,18 +239,18 @@ func Acquire(filePath string, options Options) (*Lock, error) {
 
 // Beacon signals that the process is still alive and updates the lock file if needed
 func (l *Lock) Beacon() error {
+	now := l.clock.Now()
+
+	// Check if we need to update based on interval (without lock for performance)
+	if l.options.BeaconUpdateInterval > 0 && now.Sub(l.lastBeacon) < l.options.BeaconUpdateInterval {
+		return nil
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	// Silently ignore beacon calls after release
 	if l.released {
-		return nil
-	}
-
-	now := l.clock.Now()
-
-	// Check if we need to update based on interval
-	if l.options.BeaconUpdateInterval > 0 && now.Sub(l.lastBeacon) < l.options.BeaconUpdateInterval {
 		return nil
 	}
 
