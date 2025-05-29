@@ -35,7 +35,7 @@ type SystemClock interface {
 type ProcessManager interface {
 	GetPID() int
 	Exists(pid int) bool
-	Kill(pid int) error // sends SIGHUP
+	Kill(pid int) error // sends SIGKILL
 }
 
 // Dependencies holds all external dependencies (nil values use defaults)
@@ -138,7 +138,7 @@ func (pm *defaultProcessManager) Kill(pid int) error {
 		return err
 	}
 
-	return process.Signal(syscall.SIGHUP)
+	return process.Signal(syscall.SIGKILL)
 }
 
 // getOrCreateDefaults returns default implementations for nil dependencies
@@ -205,7 +205,7 @@ func Acquire(filePath string, options Options) (*Lock, error) {
 		if now.Sub(existingLock.Timestamp) > options.StaleTimeout {
 			// Lock is stale, try to clean up the process
 			if pm.Exists(existingLock.ProcessID) {
-				// Process still exists, send SIGHUP to terminate it
+				// Process still exists, send SIGKILL to terminate it
 				if err := pm.Kill(existingLock.ProcessID); err != nil {
 					return nil, fmt.Errorf("failed to kill stale process %d: %w", existingLock.ProcessID, err)
 				}

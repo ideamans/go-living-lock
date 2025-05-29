@@ -127,7 +127,7 @@ lock, err := livinglock.Acquire("/tmp/db-migration.lock", livinglock.Options{
 - **Test_RealScenario_SystemReboot**: Test behavior after system restart
 - **Test_DiskFull**: Handle disk full scenarios
 - **Test_NetworkDrive**: Behavior on network-mounted filesystems
-- **Test_ProcessSignaling**: SIGHUP signal handling
+- **Test_ProcessSignaling**: SIGKILL signal handling
 
 #### livinglock_defaults_test.go
 
@@ -244,7 +244,7 @@ type SystemClock interface {
 type ProcessManager interface {
  GetPID() int
  Exists(pid int) bool
- Kill(pid int) error // sends SIGHUP
+ Kill(pid int) error // sends SIGKILL
 }
 
 // Dependencies holds all external dependencies (nil values use defaults)
@@ -294,7 +294,7 @@ func (l *Lock) Release() error {
 1. **Error Handling**: Corrupted lock files (invalid JSON) should be treated as non-existent locks
 2. **Concurrency**: The `Beacon()` method should use minimal locking for performance
 3. **Graceful Shutdown**: `Beacon()` calls after `Release()` should be silently ignored
-4. **Process Signaling**: Use `SIGHUP` (or `os.Interrupt` equivalent) for zombie process cleanup
+4. **Process Signaling**: Use `SIGKILL` for zombie process cleanup
 5. **Default Values**: Provide sensible defaults (1 hour stale timeout, 1 minute beacon interval)
 6. **Dependency Injection**: Support partial mocking - nil dependencies should use default implementations
 

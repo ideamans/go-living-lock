@@ -3,6 +3,7 @@ package livinglock
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -284,6 +285,65 @@ func TestDefaultProcessManager_SelfProcess(t *testing.T) {
 	}
 
 	// Note: We don't test Kill on self as it would send SIGHUP to the test process
+}
+
+func TestDefaultProcessManager_Kill(t *testing.T) {
+	pm := &defaultProcessManager{}
+	
+	// Create a temporary go file for the sleep process
+	tmpDir := t.TempDir()
+	sleepFile := filepath.Join(tmpDir, "sleep.go")
+	sleepCode := `package main
+import "time"
+func main() { time.Sleep(30 * time.Second) }`
+	
+	if err := os.WriteFile(sleepFile, []byte(sleepCode), 0644); err != nil {
+		t.Fatalf("Failed to create sleep.go: %v", err)
+	}
+	
+	// Start the sleep process
+	cmd := exec.Command("go", "run", sleepFile)
+	
+	if err := cmd.Start(); err != nil {
+		t.Skipf("Failed to start test process (go command may not be available): %v", err)
+	}
+	
+	testPID := cmd.Process.Pid
+	defer func() {
+		// Cleanup: kill the process if it's still running
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+	}()
+	
+	// Give the process a moment to start
+	time.Sleep(100 * time.Millisecond)
+	
+	// Verify process exists
+	if !pm.Exists(testPID) {
+		t.Fatalf("Test process %d should exist", testPID)
+	}
+	
+	// Send SIGHUP
+	err := pm.Kill(testPID)
+	if err != nil {
+		t.Fatalf("Failed to kill process %d: %v", testPID, err)
+	}
+	
+	// Wait for process to exit (should be killed by SIGHUP)
+	err = cmd.Wait()
+	if err != nil {
+		// Process should exit with non-zero status due to signal
+		t.Logf("Process exited as expected due to signal: %v", err)
+	} else {
+		t.Error("Expected process to exit with non-zero code after SIGHUP")
+	}
+	
+	// Verify process no longer exists
+	time.Sleep(100 * time.Millisecond)
+	if pm.Exists(testPID) {
+		t.Errorf("Process %d should no longer exist after kill", testPID)
+	}
 }
 
 func TestDefaultDependencies_NilHandling(t *testing.T) {
