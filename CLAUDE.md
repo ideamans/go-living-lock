@@ -4,55 +4,107 @@
 
 ### Purpose
 
-The `livinglock` package provides a robust file-based process locking mechanism that prevents multiple instances of the same application from running simultaneously. Unlike traditional file locks, `livinglock` implements a "living lock" system that can detect and handle zombie processes - processes that have stopped functioning but haven't properly released their locks.
+The `livinglock` package provides a robust file-based process locking mechanism specifically designed for **scheduled batch processing** where the same program runs repeatedly. Unlike traditional file locks, `livinglock` implements a "living lock" system that can detect and handle both zombie processes and deadlocked processes that are still running but no longer performing meaningful work.
+
+### Core Problem Solved
+
+**Batch Processing Exclusion with Deadlock Detection**: In scheduled batch environments (cron jobs, scheduled tasks), the same program may be triggered while a previous instance is still running. Traditional approaches have critical flaws:
+
+1. **Simple PID-based locks**: Cannot detect deadlocked processes that are still alive but stuck
+2. **Time-based locks**: May terminate healthy long-running processes
+3. **No locks**: Allow harmful concurrent executions
+
+`livinglock` solves this by requiring **active heartbeat signals** from the lock holder, proving not just process existence but **actual ongoing work**.
 
 ### Key Features
 
-- **Process exclusion**: Ensures only one instance of an application runs at a time
-- **Zombie process detection**: Automatically detects and handles stale locks from crashed processes
-- **Heartbeat mechanism**: Regular beacon updates prove process liveness
-- **Graceful takeover**: Can safely take over locks from crashed processes
-- **Testable design**: Full dependency injection for comprehensive testing
+- **Batch-aware exclusion**: Prevents concurrent execution of scheduled batch processes
+- **Deadlock detection**: Detects processes that are alive but stuck in deadlocks or infinite loops
+- **Active heartbeat mechanism**: Requires explicit proof-of-work signals, not just process existence
+- **Graceful priority handover**: New processes yield to actively working processes, take over from deadlocked ones
+- **Stale lock recovery**: Automatically recovers from crashed processes and system reboots
+- **Configurable timeouts**: Flexible heartbeat intervals and stale detection thresholds
+- **Production-ready reliability**: Full dependency injection and comprehensive testing
 
 ### Use Cases
 
-#### Single Instance Services
+#### Primary Use Case: Scheduled Batch Processing
+
+This is the **primary and most important use case** that `livinglock` was designed to solve:
 
 ```go
-// Ensure only one instance of a daemon runs
-lock, err := livinglock.Acquire("/var/run/mydaemon.lock", livinglock.Options{})
-if err != nil {
-    log.Fatalf("Another instance is running: %v", err)
+// Daily data processing batch job (e.g., cron: 0 2 * * *)
+func main() {
+    lock, err := livinglock.Acquire("/var/run/daily-batch.lock", livinglock.Options{
+        StaleTimeout:             2 * time.Hour,  // Max expected runtime
+        HeartBeatMinimalInterval: 5 * time.Minute, // Heartbeat frequency
+    })
+    if err != nil {
+        if errors.Is(err, livinglock.ErrLockBusy) {
+            log.Printf("Previous batch still running, yielding priority")
+            return // Gracefully exit, let the active process continue
+        }
+        log.Fatalf("Failed to acquire lock: %v", err)
+    }
+    defer lock.Release()
+
+    log.Printf("Starting batch processing...")
+    
+    // Process large dataset with periodic heartbeats
+    for _, batch := range dataBatches {
+        // Perform actual work
+        processDataBatch(batch)
+        
+        // Signal that we're actively working (not deadlocked)
+        if err := lock.HeartBeat(); err != nil {
+            log.Printf("Heartbeat failed, another process may be taking over: %v", err)
+            return
+        }
+        
+        log.Printf("Completed batch %d, heartbeat sent", batch.ID)
+    }
+    
+    log.Printf("Batch processing completed successfully")
 }
-defer lock.Release()
 ```
 
-#### Scheduled Jobs
+**Scenario Handled**:
+1. **Normal case**: Cron triggers at 2 AM, previous job finished → new job runs
+2. **Long-running case**: Previous job still working → new job yields gracefully  
+3. **Deadlock case**: Previous job stuck for >2 hours without heartbeat → new job takes over
+4. **Crash case**: Previous job crashed → new job detects stale lock and takes over
+
+#### Traditional Scheduled Jobs
 
 ```go
-// Prevent overlapping cron jobs
+// Backup process that may take variable time
 lock, err := livinglock.Acquire("/tmp/backup-job.lock", livinglock.Options{
     StaleTimeout: 4 * time.Hour, // Backup jobs can take a while
 })
 if err != nil {
-    log.Printf("Backup already in progress, skipping: %v", err)
-    return
+    if errors.Is(err, livinglock.ErrLockBusy) {
+        log.Printf("Backup already in progress, skipping")
+        return
+    }
+    log.Fatalf("Backup failed to start: %v", err)
 }
 defer lock.Release()
 
 // Long-running backup process with periodic heartbeats
-for {
-    // Do backup work...
+for _, dataset := range datasets {
+    backupDataset(dataset)
+    
+    // Prove we're still actively working
     if err := lock.HeartBeat(); err != nil {
-        log.Printf("Failed to update heartbeat: %v", err)
+        log.Printf("Heartbeat failed: %v", err)
         break
     }
-    time.Sleep(time.Minute)
 }
 ```
 
-#### Development Environment
+#### Secondary Use Cases
 
+**Development Environment**:
 ```go
 // Prevent multiple development servers on same port
 lock, err := livinglock.Acquire("/tmp/dev-server-8080.lock", livinglock.Options{
@@ -61,13 +113,46 @@ lock, err := livinglock.Acquire("/tmp/dev-server-8080.lock", livinglock.Options{
 })
 ```
 
-#### Database Migration Scripts
-
+**Database Migration Scripts**:
 ```go
 // Ensure only one migration runs at a time
 lock, err := livinglock.Acquire("/tmp/db-migration.lock", livinglock.Options{
     StaleTimeout: 2 * time.Hour,
 })
+```
+
+### Design Philosophy
+
+#### Why Not Simple PID Locks?
+
+Traditional PID-based locks fail in common batch scenarios:
+
+```bash
+# Process exists but is deadlocked (stuck forever)
+$ ps aux | grep daily-batch
+user  12345  0.0  0.1  process-stuck-in-deadlock
+
+# New cron job cannot start even though no real work is happening
+$ cron: daily-batch.lock exists, process 12345 alive → skip execution
+```
+
+#### Why Not Time-Based Locks?
+
+Fixed timeout locks are too rigid for variable-duration batch jobs:
+
+```bash
+# Healthy long-running job gets killed prematurely
+$ timeout 1h daily-batch  # Kills healthy 2-hour data processing job
+```
+
+#### The Living Lock Solution
+
+Combines **process aliveness** with **proof of ongoing work**:
+
+```bash
+# Process exists AND is actively sending heartbeats → healthy, don't interfere
+# Process exists BUT no heartbeats for StaleTimeout → deadlocked, safe to take over
+# Process doesn't exist → crashed, safe to take over
 ```
 
 ## 2. Comprehensive Test Scenarios
