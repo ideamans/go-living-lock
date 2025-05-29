@@ -1,3 +1,37 @@
+// Package livinglock provides a robust file-based process locking mechanism that
+// prevents multiple instances of the same application from running simultaneously.
+// Unlike traditional file locks, livinglock implements a "living lock" system that
+// can detect and handle zombie processes - processes that have stopped functioning
+// but haven't properly released their locks.
+//
+// The package is specifically designed for scheduled batch processing where processes
+// need to ensure exclusive execution and detect deadlocked processes that are alive
+// but no longer performing meaningful work.
+//
+// Key features:
+//   - Process exclusion: Ensures only one instance of an application runs at a time
+//   - Zombie process detection: Automatically detects and handles stale locks from crashed processes
+//   - Heartbeat mechanism: Regular heartbeat updates prove process liveness
+//   - Graceful takeover: Can safely take over locks from crashed processes
+//   - Testable design: Full dependency injection for comprehensive testing
+//
+// Basic usage:
+//
+//	lock, err := livinglock.Acquire("/var/run/mydaemon.lock", livinglock.Options{})
+//	if err != nil {
+//		log.Fatalf("Another instance is running: %v", err)
+//	}
+//	defer lock.Release()
+//
+//	// Long-running process with periodic heartbeats
+//	for {
+//		// Do work...
+//		if err := lock.HeartBeat(); err != nil {
+//			log.Printf("Failed to update heartbeat: %v", err)
+//			break
+//		}
+//		time.Sleep(time.Minute)
+//	}
 package livinglock
 
 import (
@@ -10,58 +44,110 @@ import (
 	"time"
 )
 
-// ErrLockBusy is returned when a lock is held by another active process
+// ErrLockBusy is returned when a lock is held by another active process.
+// This error indicates that the lock acquisition failed because another
+// process currently holds the lock and is actively maintaining it through
+// heartbeat updates.
 var ErrLockBusy = errors.New("lock is held by another process")
 
-// LockInfo represents the content of a lock file
+// LockInfo represents the content of a lock file.
+// It contains the process ID of the lock holder and the timestamp
+// of the last heartbeat update, which is used to determine if
+// the lock is stale.
 type LockInfo struct {
-	ProcessID int       `json:"process_id"`
+	// ProcessID is the process ID of the lock holder
+	ProcessID int `json:"process_id"`
+	// Timestamp is the time of the last heartbeat update
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// FileSystem interface for file operations
+// FileSystem interface abstracts file operations for lock management.
+// This interface allows for dependency injection and testing with
+// mock implementations.
 type FileSystem interface {
+	// ReadLockFile reads and parses a lock file, returning the lock information.
+	// Returns os.ErrNotExist if the file doesn't exist or contains invalid JSON.
 	ReadLockFile(filePath string) (LockInfo, error)
+
+	// WriteLockFile writes lock information to the specified file.
+	// Creates the file if it doesn't exist, overwrites if it does.
 	WriteLockFile(filePath string, lockInfo LockInfo) error
+
+	// RemoveLockFile removes the lock file.
+	// Returns nil if the file doesn't exist (idempotent operation).
 	RemoveLockFile(filePath string) error
 }
 
-// SystemClock interface for time operations
+// SystemClock interface abstracts time operations.
+// This interface allows for testing with controlled time progression
+// and ensures consistent time handling across the package.
 type SystemClock interface {
+	// Now returns the current time
 	Now() time.Time
 }
 
-// ProcessManager interface for process operations
+// ProcessManager interface abstracts process operations.
+// This interface allows for testing process management functionality
+// without affecting real processes.
 type ProcessManager interface {
+	// GetPID returns the current process ID
 	GetPID() int
+
+	// Exists checks if a process with the given PID exists
 	Exists(pid int) bool
-	Kill(pid int) error // sends SIGKILL
+
+	// Kill sends SIGKILL to the process with the given PID.
+	// Used to terminate zombie processes holding stale locks.
+	Kill(pid int) error
 }
 
-// Dependencies holds all external dependencies (nil values use defaults)
+// Dependencies holds all external dependencies for dependency injection.
+// Nil values will be replaced with default implementations.
+// This structure is primarily used for testing but can also be used
+// to customize behavior in production environments.
 type Dependencies struct {
-	FileSystem     FileSystem
-	Clock          SystemClock
+	// FileSystem handles file operations (nil uses defaultFileSystem)
+	FileSystem FileSystem
+
+	// Clock provides time operations (nil uses defaultSystemClock)
+	Clock SystemClock
+
+	// ProcessManager handles process operations (nil uses defaultProcessManager)
 	ProcessManager ProcessManager
 }
 
-// Options for lock configuration
+// Options configures the behavior of lock acquisition and maintenance.
 type Options struct {
-	StaleTimeout             time.Duration // default: 1 hour
-	HeartBeatMinimalInterval time.Duration // default: 1 minute
-	Dependencies             *Dependencies // optional for testing
+	// StaleTimeout is the duration after which a lock is considered stale
+	// if no heartbeat updates have been received. Default: 1 hour.
+	// When a stale lock is detected, the holding process may be terminated.
+	StaleTimeout time.Duration
+
+	// HeartBeatMinimalInterval is the minimum interval between heartbeat updates.
+	// HeartBeat() calls more frequent than this interval will be ignored.
+	// Default: 1 minute. Set to 0 to update on every HeartBeat() call.
+	HeartBeatMinimalInterval time.Duration
+
+	// Dependencies allows injection of custom implementations for testing.
+	// Nil dependencies will use default implementations.
+	Dependencies *Dependencies
 }
 
-// Lock represents an acquired lock
+// Lock represents an acquired lock and provides methods to maintain
+// and release it. A Lock instance is returned by successful Acquire()
+// calls and should be used to send heartbeat updates and eventually
+// release the lock.
+//
+// Lock instances are safe for concurrent use by multiple goroutines.
 type Lock struct {
-	filePath      string
-	options       Options
-	fs            FileSystem
-	clock         SystemClock
-	pm            ProcessManager
-	mu            sync.Mutex
-	released      bool
-	lastHeartBeat time.Time
+	filePath      string         // Path to the lock file
+	options       Options        // Configuration options
+	fs            FileSystem     // File system operations
+	clock         SystemClock    // Time operations
+	pm            ProcessManager // Process operations
+	mu            sync.Mutex     // Protects concurrent access
+	released      bool           // Whether the lock has been released
+	lastHeartBeat time.Time      // Timestamp of last heartbeat update
 }
 
 // defaultFileSystem implements FileSystem using the standard os package
@@ -176,7 +262,24 @@ func setDefaultOptions(options *Options) {
 	}
 }
 
-// Acquire attempts to acquire a lock at the specified file path
+// Acquire attempts to acquire a lock at the specified file path.
+//
+// If successful, it returns a Lock instance that must be used to maintain
+// the lock through heartbeat updates and eventually release it.
+//
+// The function will:
+//   - Create a new lock if no lock file exists
+//   - Allow re-acquisition if the same process already holds the lock
+//   - Take over stale locks (older than StaleTimeout)
+//   - Return ErrLockBusy if another active process holds the lock
+//
+// Parameters:
+//   - filePath: Path where the lock file will be created
+//   - options: Configuration options (zero values use defaults)
+//
+// Returns:
+//   - *Lock: Lock instance for maintaining and releasing the lock
+//   - error: ErrLockBusy if lock is held by another process, other errors for failures
 func Acquire(filePath string, options Options) (*Lock, error) {
 	setDefaultOptions(&options)
 	fs, clock, pm := getOrCreateDefaults(options.Dependencies)
@@ -241,7 +344,22 @@ func Acquire(filePath string, options Options) (*Lock, error) {
 	}, nil
 }
 
-// HeartBeat signals that the process is still alive and updates the lock file if needed
+// HeartBeat signals that the process is still alive and updates the lock file
+// timestamp if the minimal interval has elapsed.
+//
+// This method should be called regularly by long-running processes to prove
+// they are still active and prevent other processes from considering the
+// lock stale. The frequency of updates is controlled by HeartBeatMinimalInterval.
+//
+// The method is safe for concurrent use and will:
+//   - Update the lock file timestamp if enough time has passed
+//   - Verify the process still owns the lock
+//   - Panic if the lock file disappears or is hijacked by another process
+//   - Silently return if called after Release()
+//
+// Returns:
+//   - nil: Heartbeat successful or not needed yet
+//   - error: Failed to update lock file (excluding panic conditions)
 func (l *Lock) HeartBeat() error {
 	now := l.clock.Now()
 
@@ -286,7 +404,20 @@ func (l *Lock) HeartBeat() error {
 	return nil
 }
 
-// Release releases the lock and removes the lock file
+// Release releases the lock and removes the lock file.
+//
+// This method should be called when the process no longer needs the lock,
+// typically in a defer statement after successful acquisition.
+// Multiple calls to Release() are safe and will not return an error.
+//
+// After Release() is called:
+//   - The lock file is removed from the filesystem
+//   - Subsequent HeartBeat() calls are silently ignored
+//   - The Lock instance should not be used for further operations
+//
+// Returns:
+//   - nil: Lock successfully released or already released
+//   - error: Failed to remove lock file
 func (l *Lock) Release() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
