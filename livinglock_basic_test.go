@@ -266,7 +266,7 @@ func (pm *mockProcessManager) Kill(pid int) error {
 		pm.killCalled = make(map[int]bool)
 	}
 	pm.killCalled[pid] = true
-	
+
 	if pm.killError != nil {
 		if err, exists := pm.killError[pid]; exists {
 			return err

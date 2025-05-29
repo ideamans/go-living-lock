@@ -48,7 +48,7 @@ func TestAcquire_StaleLock(t *testing.T) {
 	newLockData := mockFS.files[lockPath]
 	var newLockInfo LockInfo
 	json.Unmarshal(newLockData, &newLockInfo)
-	
+
 	if newLockInfo.ProcessID != 1000 {
 		t.Errorf("Expected new lock to have PID 1000, got %d", newLockInfo.ProcessID)
 	}
@@ -234,4 +234,3 @@ func TestAcquire_StaleLock_KillError(t *testing.T) {
 		t.Error("Should not return ErrLockBusy when kill fails")
 	}
 }
-

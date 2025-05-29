@@ -205,7 +205,7 @@ func (fs *errorFileSystem) ReadLockFile(filePath string) (LockInfo, error) {
 
 func (fs *errorFileSystem) WriteLockFile(filePath string, lockInfo LockInfo) error {
 	fs.writeCount++
-	
+
 	if fs.writeError != nil {
 		// If writeErrorOnUpdate is true, only fail after the first write
 		if fs.writeErrorOnUpdate && fs.writeCount > 1 {

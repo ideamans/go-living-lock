@@ -207,10 +207,10 @@ func runAcquireTest(lockPath, processID string) {
 	}
 
 	fmt.Printf("Process %s: Lock acquired successfully\n", processID)
-	
+
 	// Hold lock briefly
 	time.Sleep(100 * time.Millisecond)
-	
+
 	lock.Release()
 	fmt.Printf("Process %s: Lock released\n", processID)
 	os.Exit(0)
@@ -224,7 +224,7 @@ func runAcquireAndHoldTest(lockPath, processID string) {
 	}
 
 	fmt.Printf("Process %s: Lock acquired, holding...\n", processID)
-	
+
 	// Hold lock indefinitely (until killed)
 	for {
 		time.Sleep(100 * time.Millisecond)

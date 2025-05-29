@@ -111,7 +111,7 @@ func TestDefaultFileSystem_RemoveLockFile(t *testing.T) {
 
 func TestDefaultFileSystem_FileNotExists(t *testing.T) {
 	fs := &defaultFileSystem{}
-	
+
 	// Test with non-existent directory
 	_, err := fs.ReadLockFile("/non/existent/path/file.lock")
 	if !os.IsNotExist(err) {
@@ -121,7 +121,7 @@ func TestDefaultFileSystem_FileNotExists(t *testing.T) {
 
 func TestDefaultFileSystem_InvalidPath(t *testing.T) {
 	fs := &defaultFileSystem{}
-	
+
 	// Test with invalid path (assuming /dev/null/invalid is invalid on most systems)
 	_, err := fs.ReadLockFile("/dev/null/invalid")
 	if err == nil {
@@ -131,7 +131,7 @@ func TestDefaultFileSystem_InvalidPath(t *testing.T) {
 
 func TestDefaultFileSystem_PermissionDenied(t *testing.T) {
 	fs := &defaultFileSystem{}
-	
+
 	// Test with path that requires root permissions
 	lockInfo := LockInfo{ProcessID: 123, Timestamp: time.Now()}
 	err := fs.WriteLockFile("/root/test.lock", lockInfo)
@@ -182,7 +182,7 @@ func TestDefaultFileSystem_JSONMarshaling(t *testing.T) {
 
 func TestDefaultSystemClock_Now(t *testing.T) {
 	clock := &defaultSystemClock{}
-	
+
 	start := time.Now()
 	result := clock.Now()
 	end := time.Now()
@@ -195,7 +195,7 @@ func TestDefaultSystemClock_Now(t *testing.T) {
 
 func TestDefaultSystemClock_Consistency(t *testing.T) {
 	clock := &defaultSystemClock{}
-	
+
 	// Call Now() multiple times rapidly
 	times := make([]time.Time, 10)
 	for i := range times {
@@ -212,7 +212,7 @@ func TestDefaultSystemClock_Consistency(t *testing.T) {
 
 func TestDefaultProcessManager_GetPID(t *testing.T) {
 	pm := &defaultProcessManager{}
-	
+
 	pid := pm.GetPID()
 	if pid <= 0 {
 		t.Errorf("Expected positive PID, got: %d", pid)
@@ -227,7 +227,7 @@ func TestDefaultProcessManager_GetPID(t *testing.T) {
 
 func TestDefaultProcessManager_Exists(t *testing.T) {
 	pm := &defaultProcessManager{}
-	
+
 	// Test with current process (should exist)
 	currentPID := os.Getpid()
 	if !pm.Exists(currentPID) {
@@ -242,7 +242,7 @@ func TestDefaultProcessManager_Exists(t *testing.T) {
 
 func TestDefaultProcessManager_NonExistentPID(t *testing.T) {
 	pm := &defaultProcessManager{}
-	
+
 	// Test with very high PID (likely non-existent)
 	if pm.Exists(999999) {
 		t.Log("PID 999999 exists - this is unexpected but not necessarily wrong")
@@ -251,7 +251,7 @@ func TestDefaultProcessManager_NonExistentPID(t *testing.T) {
 
 func TestDefaultProcessManager_InvalidPID(t *testing.T) {
 	pm := &defaultProcessManager{}
-	
+
 	// Test with negative PID
 	if pm.Exists(-1) {
 		t.Error("Negative PID should not exist")
@@ -276,9 +276,9 @@ func TestDefaultProcessManager_InvalidPID(t *testing.T) {
 
 func TestDefaultProcessManager_SelfProcess(t *testing.T) {
 	pm := &defaultProcessManager{}
-	
+
 	currentPID := pm.GetPID()
-	
+
 	// Test existence of self
 	if !pm.Exists(currentPID) {
 		t.Errorf("Current process %d should exist", currentPID)
@@ -289,25 +289,25 @@ func TestDefaultProcessManager_SelfProcess(t *testing.T) {
 
 func TestDefaultProcessManager_Kill(t *testing.T) {
 	pm := &defaultProcessManager{}
-	
+
 	// Create a temporary go file for the sleep process
 	tmpDir := t.TempDir()
 	sleepFile := filepath.Join(tmpDir, "sleep.go")
 	sleepCode := `package main
 import "time"
 func main() { time.Sleep(30 * time.Second) }`
-	
+
 	if err := os.WriteFile(sleepFile, []byte(sleepCode), 0644); err != nil {
 		t.Fatalf("Failed to create sleep.go: %v", err)
 	}
-	
+
 	// Start the sleep process
 	cmd := exec.Command("go", "run", sleepFile)
-	
+
 	if err := cmd.Start(); err != nil {
 		t.Skipf("Failed to start test process (go command may not be available): %v", err)
 	}
-	
+
 	testPID := cmd.Process.Pid
 	defer func() {
 		// Cleanup: kill the process if it's still running
@@ -315,21 +315,21 @@ func main() { time.Sleep(30 * time.Second) }`
 			cmd.Process.Kill()
 		}
 	}()
-	
+
 	// Give the process a moment to start
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Verify process exists
 	if !pm.Exists(testPID) {
 		t.Fatalf("Test process %d should exist", testPID)
 	}
-	
+
 	// Send SIGHUP
 	err := pm.Kill(testPID)
 	if err != nil {
 		t.Fatalf("Failed to kill process %d: %v", testPID, err)
 	}
-	
+
 	// Wait for process to exit (should be killed by SIGHUP)
 	err = cmd.Wait()
 	if err != nil {
@@ -338,7 +338,7 @@ func main() { time.Sleep(30 * time.Second) }`
 	} else {
 		t.Error("Expected process to exit with non-zero code after SIGHUP")
 	}
-	
+
 	// Verify process no longer exists
 	time.Sleep(100 * time.Millisecond)
 	if pm.Exists(testPID) {
@@ -349,7 +349,7 @@ func main() { time.Sleep(30 * time.Second) }`
 func TestDefaultDependencies_NilHandling(t *testing.T) {
 	// Test with completely nil dependencies
 	fs, clock, pm := getOrCreateDefaults(nil)
-	
+
 	if fs == nil {
 		t.Error("FileSystem should not be nil")
 	}
@@ -375,20 +375,20 @@ func TestDefaultDependencies_NilHandling(t *testing.T) {
 func TestDefaultDependencies_PartialNil(t *testing.T) {
 	// Test with partial nil dependencies
 	customFS := &mockFileSystem{files: make(map[string][]byte)}
-	
+
 	deps := &Dependencies{
 		FileSystem:     customFS,
 		Clock:          nil, // Should use default
 		ProcessManager: nil, // Should use default
 	}
-	
+
 	fs, clock, pm := getOrCreateDefaults(deps)
-	
+
 	// Custom FileSystem should be preserved
 	if fs != customFS {
 		t.Error("Custom FileSystem should be preserved")
 	}
-	
+
 	// Others should be defaults
 	if _, ok := clock.(*defaultSystemClock); !ok {
 		t.Error("Expected defaultSystemClock for nil Clock")
@@ -397,4 +397,3 @@ func TestDefaultDependencies_PartialNil(t *testing.T) {
 		t.Error("Expected defaultProcessManager for nil ProcessManager")
 	}
 }
-

@@ -51,7 +51,7 @@ func TestHeartBeat_UpdatesTimestamp(t *testing.T) {
 	json.Unmarshal(updatedData, &updatedLock)
 
 	if !updatedLock.Timestamp.After(initialLock.Timestamp) {
-		t.Errorf("HeartBeat should update timestamp. Initial: %v, Updated: %v", 
+		t.Errorf("HeartBeat should update timestamp. Initial: %v, Updated: %v",
 			initialLock.Timestamp, updatedLock.Timestamp)
 	}
 
@@ -221,23 +221,23 @@ func TestHeartBeat_Performance(t *testing.T) {
 	// Measure time for many rapid HeartBeat calls
 	start := time.Now()
 	const numCalls = 10000
-	
+
 	for i := 0; i < numCalls; i++ {
 		err = lock.HeartBeat()
 		if err != nil {
 			t.Fatalf("HeartBeat failed: %v", err)
 		}
 	}
-	
+
 	duration := time.Since(start)
-	
+
 	// Should be very fast (less than 100ms for 10k calls)
 	maxDuration := 100 * time.Millisecond
 	if duration > maxDuration {
-		t.Errorf("HeartBeat performance too slow: %v for %d calls (max %v)", 
+		t.Errorf("HeartBeat performance too slow: %v for %d calls (max %v)",
 			duration, numCalls, maxDuration)
 	}
-	
-	t.Logf("HeartBeat performance: %v for %d calls (%.2f μs per call)", 
+
+	t.Logf("HeartBeat performance: %v for %d calls (%.2f μs per call)",
 		duration, numCalls, float64(duration.Nanoseconds())/float64(numCalls)/1000)
 }

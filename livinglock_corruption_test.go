@@ -279,8 +279,8 @@ func TestRecoveryFromCorruption(t *testing.T) {
 	}
 
 	// Should have different PID or timestamp (new lock)
-	if recoveredLock.ProcessID == initialLock.ProcessID && 
-	   recoveredLock.Timestamp.Equal(initialLock.Timestamp) {
+	if recoveredLock.ProcessID == initialLock.ProcessID &&
+		recoveredLock.Timestamp.Equal(initialLock.Timestamp) {
 		t.Error("Recovered lock should be different from initial lock")
 	}
 }
