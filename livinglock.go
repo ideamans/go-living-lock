@@ -47,21 +47,21 @@ type Dependencies struct {
 
 // Options for lock configuration
 type Options struct {
-	StaleTimeout         time.Duration // default: 1 hour
-	BeaconUpdateInterval time.Duration // default: 1 minute
-	Dependencies         *Dependencies // optional for testing
+	StaleTimeout            time.Duration // default: 1 hour
+	HeartBeatUpdateInterval time.Duration // default: 1 minute
+	Dependencies            *Dependencies // optional for testing
 }
 
 // Lock represents an acquired lock
 type Lock struct {
-	filePath             string
-	options              Options
-	fs                   FileSystem
-	clock                SystemClock
-	pm                   ProcessManager
-	mu                   sync.Mutex
-	released             bool
-	lastBeacon           time.Time
+	filePath      string
+	options       Options
+	fs            FileSystem
+	clock         SystemClock
+	pm            ProcessManager
+	mu            sync.Mutex
+	released      bool
+	lastHeartBeat time.Time
 }
 
 // defaultFileSystem implements FileSystem using the standard os package
@@ -171,8 +171,8 @@ func setDefaultOptions(options *Options) {
 	if options.StaleTimeout == 0 {
 		options.StaleTimeout = time.Hour
 	}
-	if options.BeaconUpdateInterval == 0 {
-		options.BeaconUpdateInterval = time.Minute
+	if options.HeartBeatUpdateInterval == 0 {
+		options.HeartBeatUpdateInterval = time.Minute
 	}
 }
 
@@ -191,13 +191,13 @@ func Acquire(filePath string, options Options) (*Lock, error) {
 		if existingLock.ProcessID == currentPID {
 			// Same process can re-acquire its own lock
 			return &Lock{
-				filePath:   filePath,
-				options:    options,
-				fs:         fs,
-				clock:      clock,
-				pm:         pm,
-				released:   false,
-				lastBeacon: now,
+				filePath:      filePath,
+				options:       options,
+				fs:            fs,
+				clock:         clock,
+				pm:            pm,
+				released:      false,
+				lastHeartBeat: now,
 			}, nil
 		}
 
@@ -231,29 +231,29 @@ func Acquire(filePath string, options Options) (*Lock, error) {
 	}
 
 	return &Lock{
-		filePath:   filePath,
-		options:    options,
-		fs:         fs,
-		clock:      clock,
-		pm:         pm,
-		released:   false,
-		lastBeacon: now,
+		filePath:      filePath,
+		options:       options,
+		fs:            fs,
+		clock:         clock,
+		pm:            pm,
+		released:      false,
+		lastHeartBeat: now,
 	}, nil
 }
 
-// Beacon signals that the process is still alive and updates the lock file if needed
-func (l *Lock) Beacon() error {
+// HeartBeat signals that the process is still alive and updates the lock file if needed
+func (l *Lock) HeartBeat() error {
 	now := l.clock.Now()
 
 	// Check if we need to update based on interval (without lock for performance)
-	if l.options.BeaconUpdateInterval > 0 && now.Sub(l.lastBeacon) < l.options.BeaconUpdateInterval {
+	if l.options.HeartBeatUpdateInterval > 0 && now.Sub(l.lastHeartBeat) < l.options.HeartBeatUpdateInterval {
 		return nil
 	}
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// Silently ignore beacon calls after release
+	// Silently ignore heartbeat calls after release
 	if l.released {
 		return nil
 	}
@@ -264,7 +264,7 @@ func (l *Lock) Beacon() error {
 		if os.IsNotExist(err) {
 			panic("lock file disappeared")
 		}
-		return fmt.Errorf("failed to read lock file during beacon: %w", err)
+		return fmt.Errorf("failed to read lock file during heartbeat: %w", err)
 	}
 
 	// Verify we still own the lock
@@ -279,10 +279,10 @@ func (l *Lock) Beacon() error {
 	}
 
 	if err := l.fs.WriteLockFile(l.filePath, lockInfo); err != nil {
-		return fmt.Errorf("failed to update lock file during beacon: %w", err)
+		return fmt.Errorf("failed to update lock file during heartbeat: %w", err)
 	}
 
-	l.lastBeacon = now
+	l.lastHeartBeat = now
 	return nil
 }
 

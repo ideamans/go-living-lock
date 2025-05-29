@@ -158,27 +158,27 @@ func TestRelease_Multiple(t *testing.T) {
 	}
 }
 
-func TestBeacon_Basic(t *testing.T) {
+func TestHeartBeat_Basic(t *testing.T) {
 	tmpDir := t.TempDir()
 	lockPath := filepath.Join(tmpDir, "test.lock")
 
 	// Acquire lock
 	lock, err := Acquire(lockPath, Options{
-		BeaconUpdateInterval: 0, // Always update
+		HeartBeatUpdateInterval: 0, // Always update
 	})
 	if err != nil {
 		t.Fatalf("Failed to acquire lock: %v", err)
 	}
 	defer lock.Release()
 
-	// Call beacon
-	err = lock.Beacon()
+	// Call heartbeat
+	err = lock.HeartBeat()
 	if err != nil {
-		t.Fatalf("Beacon call failed: %v", err)
+		t.Fatalf("HeartBeat call failed: %v", err)
 	}
 }
 
-func TestBeacon_AfterRelease(t *testing.T) {
+func TestHeartBeat_AfterRelease(t *testing.T) {
 	tmpDir := t.TempDir()
 	lockPath := filepath.Join(tmpDir, "test.lock")
 
@@ -194,10 +194,10 @@ func TestBeacon_AfterRelease(t *testing.T) {
 		t.Fatalf("Failed to release lock: %v", err)
 	}
 
-	// Beacon after release should be silently ignored
-	err = lock.Beacon()
+	// HeartBeat after release should be silently ignored
+	err = lock.HeartBeat()
 	if err != nil {
-		t.Error("Beacon after release should not return error")
+		t.Error("HeartBeat after release should not return error")
 	}
 }
 

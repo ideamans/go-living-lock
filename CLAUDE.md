@@ -43,7 +43,7 @@ defer lock.Release()
 // Long-running backup process with periodic heartbeats
 for {
     // Do backup work...
-    if err := lock.Beacon(); err != nil {
+    if err := lock.HeartBeat(); err != nil {
         log.Printf("Failed to update heartbeat: %v", err)
         break
     }
@@ -57,7 +57,7 @@ for {
 // Prevent multiple development servers on same port
 lock, err := livinglock.Acquire("/tmp/dev-server-8080.lock", livinglock.Options{
     StaleTimeout: 30 * time.Minute,
-    BeaconUpdateInterval: 5 * time.Minute,
+    HeartBeatUpdateInterval: 5 * time.Minute,
 })
 ```
 
@@ -89,18 +89,18 @@ lock, err := livinglock.Acquire("/tmp/db-migration.lock", livinglock.Options{
 - **Test_Acquire_StaleLock_ProcessNotExists**: Stale lock is taken over when process doesn't exist
 - **Test_StaleTimeout_Boundary**: Test exact boundary conditions for stale timeout
 
-#### livinglock_beacon_test.go
+#### livinglock_heartbeat_test.go
 
-- **Test_Beacon_UpdatesTimestamp**: Beacon updates lock file timestamp
-- **Test_Beacon_RespectInterval**: Beacon respects update interval setting
-- **Test_Beacon_IntervalZero**: Beacon updates every time when interval is 0
-- **Test_Beacon_AfterRelease**: Beacon is silently ignored after release
-- **Test_Beacon_Concurrent**: Multiple goroutines calling Beacon safely
+- **Test_HeartBeat_UpdatesTimestamp**: HeartBeat updates lock file timestamp
+- **Test_HeartBeat_RespectInterval**: HeartBeat respects update interval setting
+- **Test_HeartBeat_IntervalZero**: HeartBeat updates every time when interval is 0
+- **Test_HeartBeat_AfterRelease**: HeartBeat is silently ignored after release
+- **Test_HeartBeat_Concurrent**: Multiple goroutines calling HeartBeat safely
 
 #### livinglock_error_test.go
 
-- **Test_Beacon_FileDisappeared**: Panic when lock file disappears
-- **Test_Beacon_FileHijacked**: Panic when lock file PID changes
+- **Test_HeartBeat_FileDisappeared**: Panic when lock file disappears
+- **Test_HeartBeat_FileHijacked**: Panic when lock file PID changes
 - **Test_Acquire_WriteError**: Handle lock file write errors
 - **Test_Release_RemoveError**: Handle lock file removal errors
 - **Test_RapidAcquireRelease**: Rapid acquire/release cycles
@@ -156,7 +156,7 @@ livinglock/
 ├── livinglock.go                      # Main package implementation
 ├── livinglock_basic_test.go          # Basic functionality tests
 ├── livinglock_stale_test.go          # Stale lock detection tests
-├── livinglock_beacon_test.go         # Beacon functionality tests
+├── livinglock_heartbeat_test.go      # HeartBeat functionality tests
 ├── livinglock_error_test.go          # Error handling tests
 ├── livinglock_corruption_test.go     # Corrupted file handling tests
 ├── livinglock_mock_test.go           # Dependency injection tests
@@ -190,7 +190,7 @@ livinglock/
 
 - **livinglock_basic_test.go**: Basic functionality tests (acquire, release, same PID)
 - **livinglock_stale_test.go**: Stale lock detection and timeout tests
-- **livinglock_beacon_test.go**: Beacon functionality and heartbeat tests
+- **livinglock_heartbeat_test.go**: HeartBeat functionality and heartbeat tests
 - **livinglock_error_test.go**: Error handling and edge case tests
 - **livinglock_corruption_test.go**: Corrupted lock file handling tests
 - **livinglock_mock_test.go**: Dependency injection and mocking tests
@@ -257,7 +257,7 @@ type Dependencies struct {
 // Options for lock configuration
 type Options struct {
  StaleTimeout         time.Duration // default: 1 hour
- BeaconUpdateInterval time.Duration // default: 1 minute
+ HeartBeatUpdateInterval time.Duration // default: 1 minute
  Dependencies         *Dependencies // optional for testing
 }
 
@@ -278,8 +278,8 @@ func Acquire(filePath string, options Options) (*Lock, error) {
  // Implementation details...
 }
 
-// Beacon signals that the process is still alive and updates the lock file if needed
-func (l *Lock) Beacon() error {
+// HeartBeat signals that the process is still alive and updates the lock file if needed
+func (l *Lock) HeartBeat() error {
  // Implementation details...
 }
 
@@ -292,10 +292,10 @@ func (l *Lock) Release() error {
 ### Implementation Notes
 
 1. **Error Handling**: Corrupted lock files (invalid JSON) should be treated as non-existent locks
-2. **Concurrency**: The `Beacon()` method should use minimal locking for performance
-3. **Graceful Shutdown**: `Beacon()` calls after `Release()` should be silently ignored
+2. **Concurrency**: The `HeartBeat()` method should use minimal locking for performance
+3. **Graceful Shutdown**: `HeartBeat()` calls after `Release()` should be silently ignored
 4. **Process Signaling**: Use `SIGKILL` for zombie process cleanup
-5. **Default Values**: Provide sensible defaults (1 hour stale timeout, 1 minute beacon interval)
+5. **Default Values**: Provide sensible defaults (1 hour stale timeout, 1 minute heartbeat interval)
 6. **Dependency Injection**: Support partial mocking - nil dependencies should use default implementations
 
 ### Testing Strategy
