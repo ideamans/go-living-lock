@@ -47,9 +47,9 @@ type Dependencies struct {
 
 // Options for lock configuration
 type Options struct {
-	StaleTimeout            time.Duration // default: 1 hour
-	HeartBeatUpdateInterval time.Duration // default: 1 minute
-	Dependencies            *Dependencies // optional for testing
+	StaleTimeout             time.Duration // default: 1 hour
+	HeartBeatMinimalInterval time.Duration // default: 1 minute
+	Dependencies             *Dependencies // optional for testing
 }
 
 // Lock represents an acquired lock
@@ -171,8 +171,8 @@ func setDefaultOptions(options *Options) {
 	if options.StaleTimeout == 0 {
 		options.StaleTimeout = time.Hour
 	}
-	if options.HeartBeatUpdateInterval == 0 {
-		options.HeartBeatUpdateInterval = time.Minute
+	if options.HeartBeatMinimalInterval == 0 {
+		options.HeartBeatMinimalInterval = time.Minute
 	}
 }
 
@@ -246,7 +246,7 @@ func (l *Lock) HeartBeat() error {
 	now := l.clock.Now()
 
 	// Check if we need to update based on interval (without lock for performance)
-	if l.options.HeartBeatUpdateInterval > 0 && now.Sub(l.lastHeartBeat) < l.options.HeartBeatUpdateInterval {
+	if l.options.HeartBeatMinimalInterval > 0 && now.Sub(l.lastHeartBeat) < l.options.HeartBeatMinimalInterval {
 		return nil
 	}
 

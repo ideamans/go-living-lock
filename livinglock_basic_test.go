@@ -164,7 +164,7 @@ func TestHeartBeat_Basic(t *testing.T) {
 
 	// Acquire lock
 	lock, err := Acquire(lockPath, Options{
-		HeartBeatUpdateInterval: 0, // Always update
+		HeartBeatMinimalInterval: 0, // Always update
 	})
 	if err != nil {
 		t.Fatalf("Failed to acquire lock: %v", err)

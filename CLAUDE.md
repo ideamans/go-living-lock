@@ -57,7 +57,7 @@ for {
 // Prevent multiple development servers on same port
 lock, err := livinglock.Acquire("/tmp/dev-server-8080.lock", livinglock.Options{
     StaleTimeout: 30 * time.Minute,
-    HeartBeatUpdateInterval: 5 * time.Minute,
+    HeartBeatMinimalInterval: 5 * time.Minute,
 })
 ```
 
@@ -257,7 +257,7 @@ type Dependencies struct {
 // Options for lock configuration
 type Options struct {
  StaleTimeout         time.Duration // default: 1 hour
- HeartBeatUpdateInterval time.Duration // default: 1 minute
+ HeartBeatMinimalInterval time.Duration // default: 1 minute
  Dependencies         *Dependencies // optional for testing
 }
 
