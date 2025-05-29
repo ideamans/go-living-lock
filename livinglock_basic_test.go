@@ -244,7 +244,10 @@ func (c *mockSystemClock) Now() time.Time {
 }
 
 type mockProcessManager struct {
-	pid int
+	pid               int
+	existingProcesses map[int]bool
+	killCalled        map[int]bool
+	killError         map[int]error
 }
 
 func (pm *mockProcessManager) GetPID() int {
@@ -252,9 +255,22 @@ func (pm *mockProcessManager) GetPID() int {
 }
 
 func (pm *mockProcessManager) Exists(pid int) bool {
-	return true // For basic tests, assume processes exist
+	if pm.existingProcesses == nil {
+		return true // For basic tests, assume processes exist
+	}
+	return pm.existingProcesses[pid]
 }
 
 func (pm *mockProcessManager) Kill(pid int) error {
+	if pm.killCalled == nil {
+		pm.killCalled = make(map[int]bool)
+	}
+	pm.killCalled[pid] = true
+	
+	if pm.killError != nil {
+		if err, exists := pm.killError[pid]; exists {
+			return err
+		}
+	}
 	return nil // For basic tests, killing always succeeds
 }
