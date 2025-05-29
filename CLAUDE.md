@@ -129,6 +129,26 @@ lock, err := livinglock.Acquire("/tmp/db-migration.lock", livinglock.Options{
 - **Test_NetworkDrive**: Behavior on network-mounted filesystems
 - **Test_ProcessSignaling**: SIGHUP signal handling
 
+#### livinglock_defaults_test.go
+
+- **Test_DefaultFileSystem_ReadLockFile**: Test real file system read operations
+- **Test_DefaultFileSystem_WriteLockFile**: Test real file system write operations
+- **Test_DefaultFileSystem_RemoveLockFile**: Test real file system remove operations
+- **Test_DefaultFileSystem_FileNotExists**: Test behavior when lock file doesn't exist
+- **Test_DefaultFileSystem_InvalidPath**: Test behavior with invalid file paths
+- **Test_DefaultFileSystem_PermissionDenied**: Test behavior with permission errors
+- **Test_DefaultFileSystem_JSONMarshaling**: Test JSON encoding/decoding with real files
+- **Test_DefaultSystemClock_Now**: Test real time operations and precision
+- **Test_DefaultSystemClock_Consistency**: Test clock consistency across calls
+- **Test_DefaultProcessManager_GetPID**: Test real process ID retrieval
+- **Test_DefaultProcessManager_Exists**: Test real process existence checking
+- **Test_DefaultProcessManager_Kill**: Test real process signaling (SIGHUP)
+- **Test_DefaultProcessManager_NonExistentPID**: Test behavior with non-existent PIDs
+- **Test_DefaultProcessManager_InvalidPID**: Test behavior with invalid PIDs (negative, zero)
+- **Test_DefaultProcessManager_SelfProcess**: Test operations on current process
+- **Test_DefaultDependencies_NilHandling**: Test nil dependency fallback to defaults
+- **Test_DefaultDependencies_PartialNil**: Test partial nil dependencies mixed with custom ones
+
 ## 3. File Structure
 
 ```
@@ -140,6 +160,7 @@ livinglock/
 ├── livinglock_error_test.go          # Error handling tests
 ├── livinglock_corruption_test.go     # Corrupted file handling tests
 ├── livinglock_mock_test.go           # Dependency injection tests
+├── livinglock_defaults_test.go       # Default implementation tests
 ├── livinglock_integration_test.go    # Integration tests with real processes
 ├── testdata/                         # Test fixtures and mock implementations
 │   ├── mock_filesystem.go            # Mock FileSystem implementation
@@ -173,6 +194,7 @@ livinglock/
 - **livinglock_error_test.go**: Error handling and edge case tests
 - **livinglock_corruption_test.go**: Corrupted lock file handling tests
 - **livinglock_mock_test.go**: Dependency injection and mocking tests
+- **livinglock_defaults_test.go**: Default implementation tests for real dependencies
 - **livinglock_integration_test.go**: End-to-end tests with real processes
 
 #### Test Support
