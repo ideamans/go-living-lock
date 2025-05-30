@@ -235,6 +235,21 @@ func (fs *mockFileSystem) RemoveLockFile(filePath string) error {
 	return nil
 }
 
+func (fs *mockFileSystem) CreateLockFileExclusively(filePath string, lockInfo LockInfo) error {
+	// Check if file already exists
+	if _, exists := fs.files[filePath]; exists {
+		return os.ErrExist
+	}
+	
+	// Create file
+	data, err := json.Marshal(lockInfo)
+	if err != nil {
+		return err
+	}
+	fs.files[filePath] = data
+	return nil
+}
+
 type mockSystemClock struct {
 	currentTime time.Time
 }

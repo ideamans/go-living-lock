@@ -232,3 +232,23 @@ func (fs *errorFileSystem) RemoveLockFile(filePath string) error {
 	delete(fs.files, filePath)
 	return nil
 }
+
+func (fs *errorFileSystem) CreateLockFileExclusively(filePath string, lockInfo LockInfo) error {
+	// Check for write error first
+	if fs.writeError != nil && !fs.writeErrorOnUpdate {
+		return fs.writeError
+	}
+	
+	// Check if file already exists
+	if _, exists := fs.files[filePath]; exists {
+		return os.ErrExist
+	}
+	
+	// Create file
+	data, err := json.Marshal(lockInfo)
+	if err != nil {
+		return err
+	}
+	fs.files[filePath] = data
+	return nil
+}

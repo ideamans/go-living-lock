@@ -76,6 +76,10 @@ type FileSystem interface {
 	// RemoveLockFile removes the lock file.
 	// Returns nil if the file doesn't exist (idempotent operation).
 	RemoveLockFile(filePath string) error
+
+	// CreateLockFileExclusively creates a lock file exclusively.
+	// Returns os.ErrExist if the file already exists.
+	CreateLockFileExclusively(filePath string, lockInfo LockInfo) error
 }
 
 // SystemClock interface abstracts time operations.
@@ -185,6 +189,23 @@ func (fs *defaultFileSystem) RemoveLockFile(filePath string) error {
 	return err
 }
 
+func (fs *defaultFileSystem) CreateLockFileExclusively(filePath string, lockInfo LockInfo) error {
+	data, err := json.Marshal(lockInfo)
+	if err != nil {
+		return err
+	}
+
+	// Use O_EXCL to ensure exclusive creation
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return err // File already exists or other error
+	}
+	defer file.Close()
+
+	_, err = file.Write(data)
+	return err
+}
+
 // defaultSystemClock implements SystemClock using the standard time package
 type defaultSystemClock struct{}
 
@@ -287,62 +308,86 @@ func Acquire(filePath string, options Options) (*Lock, error) {
 	currentPID := pm.GetPID()
 	now := clock.Now()
 
-	// Try to read existing lock file
-	existingLock, err := fs.ReadLockFile(filePath)
-	if err == nil {
-		// Lock file exists, check if it's stale or from same process
-		if existingLock.ProcessID == currentPID {
-			// Same process can re-acquire its own lock
-			return &Lock{
-				filePath:      filePath,
-				options:       options,
-				fs:            fs,
-				clock:         clock,
-				pm:            pm,
-				released:      false,
-				lastHeartBeat: now,
-			}, nil
-		}
-
-		// Check if lock is stale
-		if now.Sub(existingLock.Timestamp) > options.StaleTimeout {
-			// Lock is stale, try to clean up the process
-			if pm.Exists(existingLock.ProcessID) {
-				// Process still exists, send SIGKILL to terminate it
-				if err := pm.Kill(existingLock.ProcessID); err != nil {
-					return nil, fmt.Errorf("failed to kill stale process %d: %w", existingLock.ProcessID, err)
-				}
-			}
-			// Process doesn't exist or was killed, proceed to acquire lock
-		} else {
-			// Lock is still active
-			return nil, ErrLockBusy
-		}
-	} else if !os.IsNotExist(err) {
-		// Some other error reading the file
-		return nil, fmt.Errorf("failed to read lock file: %w", err)
-	}
-
-	// Create new lock
+	// First, try atomic lock creation (for new locks)
 	lockInfo := LockInfo{
 		ProcessID: currentPID,
 		Timestamp: now,
 	}
 
-	if err := fs.WriteLockFile(filePath, lockInfo); err != nil {
-		return nil, fmt.Errorf("failed to write lock file: %w", err)
+	// Try to create lock file exclusively - this prevents race conditions
+	if err := fs.CreateLockFileExclusively(filePath, lockInfo); err == nil {
+		// Successfully created new lock
+		return &Lock{
+			filePath:      filePath,
+			options:       options,
+			fs:            fs,
+			clock:         clock,
+			pm:            pm,
+			released:      false,
+			lastHeartBeat: now,
+		}, nil
 	}
 
-	return &Lock{
-		filePath:      filePath,
-		options:       options,
-		fs:            fs,
-		clock:         clock,
-		pm:            pm,
-		released:      false,
-		lastHeartBeat: now,
-	}, nil
+	// Lock file already exists, read and analyze it
+	existingLock, err := fs.ReadLockFile(filePath)
+	if err != nil {
+		// File exists but corrupted, treat as no lock
+		if err := fs.WriteLockFile(filePath, lockInfo); err != nil {
+			return nil, fmt.Errorf("failed to overwrite corrupted lock file: %w", err)
+		}
+		return &Lock{
+			filePath:      filePath,
+			options:       options,
+			fs:            fs,
+			clock:         clock,
+			pm:            pm,
+			released:      false,
+			lastHeartBeat: now,
+		}, nil
+	}
+
+	// Check if it's the same process
+	if existingLock.ProcessID == currentPID {
+		// Same process can re-acquire its own lock
+		return &Lock{
+			filePath:      filePath,
+			options:       options,
+			fs:            fs,
+			clock:         clock,
+			pm:            pm,
+			released:      false,
+			lastHeartBeat: now,
+		}, nil
+	}
+
+	// Check if lock is stale
+	if now.Sub(existingLock.Timestamp) > options.StaleTimeout {
+		// Lock is stale, try to clean up the process
+		if pm.Exists(existingLock.ProcessID) {
+			// Process still exists, send SIGKILL to terminate it
+			if err := pm.Kill(existingLock.ProcessID); err != nil {
+				return nil, fmt.Errorf("failed to kill stale process %d: %w", existingLock.ProcessID, err)
+			}
+		}
+		// Process doesn't exist or was killed, take over the lock
+		if err := fs.WriteLockFile(filePath, lockInfo); err != nil {
+			return nil, fmt.Errorf("failed to take over stale lock: %w", err)
+		}
+		return &Lock{
+			filePath:      filePath,
+			options:       options,
+			fs:            fs,
+			clock:         clock,
+			pm:            pm,
+			released:      false,
+			lastHeartBeat: now,
+		}, nil
+	}
+
+	// Lock is still active
+	return nil, ErrLockBusy
 }
+
 
 // HeartBeat signals that the process is still alive and updates the lock file
 // timestamp if the minimal interval has elapsed.
